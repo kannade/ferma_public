@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "module": "commonjs",
+    "strict": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "outDir": "./dist",
+    "typeRoots": [
+      "./types"
+    ],
+    "lib": [
+      "ES2021.String"
+    ]
+  },
+  "include": [
+    "./**/*.ts",
+    "index.js"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

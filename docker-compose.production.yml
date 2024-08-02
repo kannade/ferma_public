@@ -1,0 +1,160 @@
+services:
+  nginx:
+    container_name: nginx
+    image: nginx:1.27.0-alpine3.19-slim
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-vz", "-w1", "localhost", "80"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    env_file:
+      - .env
+    volumes:
+      - ${NGINX_CONF}:/etc/nginx/nginx.conf:ro
+      - ${NGINX_CONF_SRV}:/etc/nginx/conf.d:ro
+      - ${NGINX_LOGS}:/var/log/nginx
+      - ${NGINX_SSL_CERTS}:/etc/ssl:ro
+      - ${LB_LOCAL_HOME}:${NGINX_WWW_LB}
+      - ${WORDPRESS_LOCAL_HOME}:${NGINX_WWW_WP}
+      - ${WORDPRESS_DATA_DIR}/wp-content:${NGINX_WWW_WP}/wp-content:rw
+      # - ${WORDPRESS_DATA_DIR}/wp-config.php:${NGINX_WWW_WP}/wp-config.php
+
+    ports:
+      - "80:80"
+      - "81:81"
+    networks:
+      - app-network
+      - wp-network
+
+  # app:
+  #   container_name: app
+  #   build:
+  #     context: ./app
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   depends_on:
+  #      - nginx
+  #      - server
+  #      - db
+  #   networks:
+  #     - app-network
+
+  server:
+    container_name: server
+    build:
+      context: ./server
+      target: production
+    tty: true
+    working_dir: /opt/server
+    env_file:
+      - .env
+    expose:
+      - "3000"
+    depends_on:
+      - db
+    restart: unless-stopped
+    command: npm run start
+    networks:
+      - app-network
+
+  db:
+    container_name: db
+    image: postgres:16.3-alpine3.20
+    environment:
+      - POSTGRES_DB=${PG_NAME}
+      - POSTGRES_USER=${PG_USER}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+    volumes:
+      - ${PG_LOCAL_HOME}:/var/lib/postgresql/data
+      - ./initsql/lb.sql:/docker-entrypoint-initdb.d/create_database.sql
+    expose:
+      - "5432"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d postgres" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app-network
+
+  pgadmin:
+    container_name: pgadmin
+    depends_on:
+      - db
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
+    # expose:
+    #   - "80"
+    ports:
+      - "8080:80"
+    restart: no
+    networks:
+      - app-network
+
+  mysql:
+    image: mysql:9.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_DATABASE=${WORDPRESS_DB_NAME}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ${MYSQL_LOCAL_HOME}:/var/lib/mysql
+      - ${MYSQL_CONFIG}:/etc/mysql/conf.d
+    healthcheck:
+      test: mysql ${WORDPRESS_DB_NAME} --user=${MYSQL_USER} --password='${MYSQL_PASSWORD}' --silent --execute "SELECT 1;"
+      interval: 30s
+      timeout: 10s
+      retries: 5 
+    networks:
+      - wp-network
+
+  wordpress:
+    depends_on:
+      - mysql
+    image: wordpress:6.6.1-php8.1-fpm-alpine
+    container_name: wordpress
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - WORDPRESS_DB_HOST=${WORDPRESS_DB_HOST}
+      - WORDPRESS_DB_NAME=${WORDPRESS_DB_NAME}
+      - WORDPRESS_DB_USER=${WORDPRESS_DB_USER}
+      - WORDPRESS_DB_PASSWORD=${WORDPRESS_DB_PASSWORD}
+    volumes:
+      - ${WORDPRESS_LOCAL_HOME}:/var/www/html
+      - ${WORDPRESS_UPLOADS_CONFIG}:/usr/local/etc/php/conf.d/uploads.ini
+      - ${WORDPRESS_DATA_DIR}/wp-content:/var/www/html/wp-content:rw
+      # - ${WORDPRESS_DATA_DIR}/wp-config.php:/var/www/html/wp-config.php
+
+    networks:
+      - wp-network
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: adminer
+    restart: no
+    depends_on:
+      - mysql
+      - db
+    ports:
+      - "9001:8080"
+    networks:
+      - app-network
+      - wp-network
+
+networks:
+  app-network:
+    driver: bridge
+    # driver_opts:
+    #   com.docker.network.driver.mtu: 1450
+  wp-network:
+    driver: bridge
+    # driver_opts:
+    #   com.docker.network.driver.mtu: 1450
