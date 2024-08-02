@@ -1,0 +1,13 @@
+{
+    "database": {
+        "username": "luckberry",
+        "password": "pgpass",
+        "database": "luckberry",
+        "host": "db",
+        "port": 5432,
+        "dialect": "postgres",
+        "sync": {
+            "force": false
+        }
+    }
+}
